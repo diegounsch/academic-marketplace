@@ -586,10 +586,7 @@ export default function AuthScreen({ onLoginSuccess, mockUser, onClose }: AuthSc
               {/* Botón Google Login */}
               <button
                 type="button"
-                onClick={() => {
-                  setGoogleIsRegistering(false);
-                  setShowGoogleModal(true);
-                }}
+                onClick={handleRealGoogleLogin}
                 className="w-full h-11 bg-white hover:bg-slate-100 text-slate-900 text-xs font-black rounded-xl shadow-lg flex items-center justify-center gap-2.5 cursor-pointer transition-all border border-slate-200 active:scale-98"
                 id="google-login-btn"
               >
