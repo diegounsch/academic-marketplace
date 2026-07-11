@@ -577,34 +577,6 @@ export default function AuthScreen({ onLoginSuccess, mockUser, onClose }: AuthSc
                 <span>Ingresar con Google</span>
               </button>
 
-              {/* Quick demo entrance */}
-              <div className="border-t border-slate-800 pt-5 mt-6 space-y-3">
-                <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block text-center">
-                  ¿QUIERES UNA PRUEBA RÁPIDA?
-                </span>
-                <button
-                  type="button"
-                  onClick={handleQuickLogin}
-                  className="w-full py-3 px-4 bg-slate-950 hover:bg-slate-850 text-slate-300 rounded-xl border border-slate-800 hover:border-slate-700 text-xs flex items-center justify-between transition-all"
-                  id="quick-login-btn"
-                >
-                  <div className="flex items-center gap-3">
-                    <img 
-                      src={mockUser.avatar} 
-                      alt="Diego" 
-                      className="w-7 h-7 rounded-full border border-blue-500 object-cover" 
-                    />
-                    <div className="text-left">
-                      <span className="font-bold text-xs block text-white">{mockUser.name}</span>
-                      <span className="text-[10px] text-slate-450 block font-mono">{mockUser.email}</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 text-[10px] font-mono text-blue-400 font-bold bg-blue-950/40 px-2.5 py-1 rounded-lg border border-blue-900/30">
-                    <Wallet className="w-3 h-3" />
-                    <span>S/. {mockUser.balance.toFixed(0)}</span>
-                  </div>
-                </button>
-              </div>
             </form>
           ) : (
             /* REGISTER / SIGN UP FORM */
