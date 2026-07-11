@@ -2,7 +2,8 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
-
+import { signInWithPopup } from "firebase/auth";
+import { auth, googleProvider } from "./firebase";
 import React, { useState } from "react";
 import { 
   BookOpen, 
