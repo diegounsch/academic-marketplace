@@ -190,17 +190,36 @@ export default function AuthScreen({ onLoginSuccess, mockUser, onClose }: AuthSc
     onLoginSuccess(newStudent);
     setShowGoogleModal(false);
   };
+// Handler for Real Google Login
+  const handleRealGoogleLogin = async () => {
+    try {
+      setErrorMessage("");
+      const result = await signInWithPopup(auth, googleProvider);
+      const user = result.user;
+      
+      // Adaptamos los datos de Google al formato de tu aplicación (UserProfile)
+      const googleStudent: UserProfile = {
+        name: user.displayName || "Estudiante UNSCH",
+        firstName: user.displayName?.split(" ")[0] || "Estudiante",
+        lastName: user.displayName?.split(" ").slice(1).join(" ") || "UNSCH",
+        email: user.email || "",
+        university: "Universidad Nacional de San Cristóbal de Huamanga",
+        avatar: user.photoURL || STUDENT_AVATARS[0].url,
+        balance: 150.0,
+        dni: "Pendiente", // Google no proporciona DNI, lo dejamos pendiente
+        isDniVerified: false
+      };
 
-  // Handler for Quick Demo Login
-  const handleQuickLogin = () => {
-    const savedUsersRaw = localStorage.getItem("registered_students");
-    const savedUsers: UserProfile[] = savedUsersRaw ? JSON.parse(savedUsersRaw) : [];
-    const matchedUser = savedUsers.find(u => u.email.toLowerCase() === mockUser.email.toLowerCase());
-    if (matchedUser?.isBlocked) {
-      setErrorMessage("Acceso Denegado: Su cuenta estudiantil ha sido bloqueada temporalmente por un administrador de la UNSCH.");
-      return;
+      setSuccessMessage(`¡Bienvenido ${user.displayName}!`);
+      
+      setTimeout(() => {
+        onLoginSuccess(googleStudent);
+      }, 1000);
+
+    } catch (error) {
+      console.error("Error al iniciar sesión con Google:", error);
+      setErrorMessage("Hubo un error al conectar con Google. Cierra la ventana emergente e intenta de nuevo.");
     }
-    onLoginSuccess(matchedUser || mockUser);
   };
 
   // Handler for Manual Login
