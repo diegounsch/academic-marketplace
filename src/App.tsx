@@ -273,11 +273,34 @@ export default function App() {
   };
 
   // --- Student Auth operations ---
-  const handleLoginSuccess = (loggedInUser: UserProfile) => {
-    setUser(loggedInUser);
-    localStorage.setItem("academic_user", JSON.stringify(loggedInUser));
-    setIsLoggedIn(true);
-    localStorage.setItem("academic_is_logged_in", "true");
+  const handleLoginSuccess = async (loggedInUser: UserProfile) => {
+    try {
+      // Intentamos registrar o actualizar el perfil del alumno en Supabase usando 'upsert'
+      const { error } = await supabase
+        .from('profiles')
+        .upsert({
+          id: loggedInUser.id || 'current_user',
+          full_name: loggedInUser.name,
+          avatar_url: loggedInUser.avatar,
+          is_dni_verified: loggedInUser.isDniVerified,
+          wallet_balance: loggedInUser.balance,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'id' });
+
+      if (error) throw error;
+
+      // Si se guardó bien en la base de datos, lo mantenemos en la interfaz de React
+      setUser(loggedInUser);
+      localStorage.setItem("academic_user", JSON.stringify(loggedInUser));
+      setIsLoggedIn(true);
+      localStorage.setItem("academic_is_logged_in", "true");
+      
+    } catch (err) {
+      console.error("Error al sincronizar el perfil con Supabase:", err.message);
+      // Fallback: Permitimos loguear localmente de todas formas para no trabar al usuario
+      setUser(loggedInUser);
+      setIsLoggedIn(true);
+    }
   };
 
   const handleLogout = () => {
@@ -314,7 +337,7 @@ export default function App() {
   };
 
   // --- New Manual Listing Posting ---
-  const handlePublishProduct = (p: {
+ const handlePublishProduct = async (p: {
     title: string;
     category: Category;
     condition: Condition;
@@ -328,29 +351,58 @@ export default function App() {
       return;
     }
 
-    const newProduct: Product = {
-      id: `custom_${Date.now()}`,
-      title: p.title,
-      description: p.description,
-      price: p.price,
-      category: p.category,
-      condition: p.condition,
-      courseCode: p.courseCode || undefined,
-      image: p.image,
-      seller: {
-        id: "current_user",
-        name: user.name,
-        avatar: user.avatar,
-        role: "Tú (Estudiante)",
-        rating: 5.0,
-        salesCount: 0,
-        persona: "Eres el propio usuario chateando",
-      },
-      createdAt: new Date().toISOString().split("T")[0],
-      isCustom: true,
-    };
+    try {
+      // 1. Guardamos el producto en la tabla 'products' de Supabase
+      const { data, error } = await supabase
+        .from('products')
+        .insert([
+          {
+            title: p.title,
+            description: p.description,
+            price: p.price,
+            category: p.category,
+            condition: p.condition,
+            course_code: p.courseCode || null,
+            image_url: p.image,
+            seller_id: user.id || 'current_user', // Enlazamos al estudiante actual
+            status: 'available'
+          }
+        ])
+        .select();
 
-    saveProducts([newProduct, ...products]);
+      if (error) throw error;
+
+      alert("¡Artículo publicado con éxito en Supabase!");
+      
+      // 2. Recargamos la página o actualizamos el estado local para mostrar el nuevo item
+      if (data && data[0]) {
+        const addedProduct: Product = {
+          id: data[0].id,
+          title: data[0].title,
+          description: data[0].description,
+          price: data[0].price,
+          category: data[0].category,
+          condition: data[0].condition,
+          courseCode: data[0].course_code,
+          image: data[0].image_url,
+          seller: {
+            id: user.id,
+            name: user.name,
+            avatar: user.avatar,
+            role: "Tú (Estudiante)",
+            rating: 5.0,
+            persona: "Eres tú",
+          },
+          createdAt: data[0].created_at,
+          isCustom: true,
+        };
+        setProducts([addedProduct, ...products]);
+        setActiveTab("marketplace"); // Redirigir al inicio
+      }
+    } catch (err) {
+      console.error("Error al publicar en Supabase:", err.message);
+      alert("Hubo un problema al guardar tu producto en la nube.");
+    }
   };
 
   // --- AI-assisted listing posting callback ---
