@@ -1,0 +1,8 @@
+{
+  "name": "Remix: Academic Marketplace",
+  "description": "Un mercado universitario completo donde estudiantes, docentes y exalumnos compran, venden y regatean libros, apuntes, tecnología y asesorías académicas de forma segura e interactiva.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
