@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect } from "react";
+import { supabase } from './supabaseClient';
 import { 
   INITIAL_PRODUCTS, 
   MOCK_USER 
@@ -104,14 +105,50 @@ export default function App() {
 
   // --- Initial loading on component mount ---
   useEffect(() => {
-    // Sync products
-    const savedProducts = localStorage.getItem("academic_products");
-    if (savedProducts) {
-      setProducts(JSON.parse(savedProducts));
-    } else {
-      setProducts(INITIAL_PRODUCTS);
-      localStorage.setItem("academic_products", JSON.stringify(INITIAL_PRODUCTS));
-    }
+    
+   // Sync products con Supabase
+    const fetchProducts = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('products')
+          .select('*, profiles(full_name, avatar_url)') // Traemos producto y datos del vendedor
+          .eq('status', 'available');
+
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          // Adaptamos los datos de Supabase al formato visual de tu app
+          const formattedProducts = data.map(item => ({
+            id: item.id,
+            title: item.title,
+            description: item.description,
+            price: item.price,
+            image: item.image_url || 'https://images.unsplash.com/photo-1543002588-bfa74002ed7e?w=500&q=80',
+            category: 'Libros de Texto', // Valor por defecto temporal
+            condition: 'Usado',
+            seller: {
+              id: item.seller_id,
+              name: item.profiles?.full_name || 'Estudiante UNSCH',
+              avatar: item.profiles?.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix',
+              role: 'Vendedor',
+              rating: 5.0,
+              persona: 'Amigable'
+            },
+            createdAt: item.created_at,
+            isCustom: true
+          }));
+          setProducts(formattedProducts);
+        } else {
+          // Si tu base de datos de Supabase está vacía, mostraremos los datos de prueba para que no se vea vacío
+          setProducts(INITIAL_PRODUCTS);
+        }
+      } catch (err) {
+        console.error("Error conectando a Supabase:", err.message);
+        setProducts(INITIAL_PRODUCTS); // Si hay error, caemos en los datos falsos
+      }
+    };
+
+    fetchProducts();
 
     // Sync user profile (includes wallet balance)
     const savedUser = localStorage.getItem("academic_user");
