@@ -610,7 +610,7 @@ export default function PaymentGateway({
             {paymentMethod === "wallet" && (
               <div className="bg-slate-50 border border-slate-100 p-4 rounded-2xl flex items-start gap-2.5">
                 <Wallet className="w-5 h-5 text-green-500 shrink-0" />
-                <div className="text-xs"
+                <div className="text-xs">
                   <span className="font-bold text-slate-700 block">Pago con Monedero Estudiantil</span>
                   <p className="text-slate-500 mt-0.5 leading-normal">
                     Se deducirán <span className="font-extrabold text-secondary">S/. {totalAmount.toFixed(2)}</span> directamente de tu saldo de monedero de la plataforma. Saldo restante estimado: <span className="font-bold text-green-600">S/. {(user.balance - totalAmount).toFixed(2)}</span>.
