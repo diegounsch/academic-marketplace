@@ -2,7 +2,7 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
-
+import CheckoutButton from './components/CheckoutButton'; // Ajusta la ruta si es necesario
 import React, { useState, useEffect } from "react";
 import { supabase } from './supabaseClient';
 import { 
