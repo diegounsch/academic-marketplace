@@ -588,87 +588,29 @@ export default function PaymentGateway({
             )}
 
             {paymentMethod === "card" && (
-              <div className="space-y-3.5 border-t border-slate-100 pt-3">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
-                    Titular de la Tarjeta
-                  </label>
-                  <div className="relative text-slate-400">
-                    <span className="absolute inset-y-0 left-0 flex items-center pl-3.5">
-                      <User className="w-4 h-4" />
-                    </span>
-                    <input
-                      type="text"
-                      placeholder="Ej: Diego Llamocca"
-                      value={cardName}
-                      onChange={(e) => setCardName(e.target.value)}
-                      className="w-full h-10 pl-10 pr-4 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-blue-500 font-medium text-slate-700"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
-                    Número de Tarjeta
-                  </label>
-                  <div className="relative text-slate-400">
-                    <span className="absolute inset-y-0 left-0 flex items-center pl-3.5">
-                      <CreditCard className="w-4 h-4" />
-                    </span>
-                    <input
-                      type="text"
-                      placeholder="4000 1234 5678 9010"
-                      value={cardNumber}
-                      onChange={handleCardNumberChange}
-                      className="w-full h-10 pl-10 pr-4 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-blue-500 font-mono font-bold text-slate-700"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
-                      Fecha Vto. (MM/YY)
-                    </label>
-                    <div className="relative text-slate-400">
-                      <span className="absolute inset-y-0 left-0 flex items-center pl-3.5">
-                        <Calendar className="w-4 h-4" />
-                      </span>
-                      <input
-                        type="text"
-                        placeholder="MM/YY"
-                        value={cardExpiry}
-                        onChange={handleExpiryChange}
-                        className="w-full h-10 pl-10 pr-4 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-blue-500 font-mono font-bold text-slate-700"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
-                      CVV (Seguridad)
-                    </label>
-                    <div className="relative text-slate-400">
-                      <span className="absolute inset-y-0 left-0 flex items-center pl-3.5">
-                        <Hash className="w-4 h-4" />
-                      </span>
-                      <input
-                        type="password"
-                        placeholder="123"
-                        value={cardCvv}
-                        onChange={handleCvvChange}
-                        className="w-full h-10 pl-10 pr-4 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-blue-500 font-mono font-bold text-slate-700"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
+  <div className="space-y-4 border-t border-slate-100 pt-5 text-center">
+    <div className="bg-blue-50/50 p-4 rounded-2xl border border-blue-100 flex flex-col items-center justify-center">
+      {/* Mensaje amigable para el usuario */}
+      <p className="text-xs text-slate-600 mb-4 px-2">
+        Estás a un paso de completar tu compra de forma segura. 
+        Haz clic en el botón de abajo para pagar a través de <strong>Mercado Pago</strong>.
+      </p>
+      
+      {/* Aquí llamamos al botón de Mercado Pago */}
+      <div className="w-full max-w-sm">
+        <CheckoutButton 
+          bookTitle={product.title} 
+          bookPrice={totalAmount} 
+        />
+      </div>
+    </div>
+  </div>
+)}
 
             {paymentMethod === "wallet" && (
               <div className="bg-slate-50 border border-slate-100 p-4 rounded-2xl flex items-start gap-2.5">
                 <Wallet className="w-5 h-5 text-green-500 shrink-0" />
-                <div className="text-xs">
+                <div className="text-xs"
                   <span className="font-bold text-slate-700 block">Pago con Monedero Estudiantil</span>
                   <p className="text-slate-500 mt-0.5 leading-normal">
                     Se deducirán <span className="font-extrabold text-secondary">S/. {totalAmount.toFixed(2)}</span> directamente de tu saldo de monedero de la plataforma. Saldo restante estimado: <span className="font-bold text-green-600">S/. {(user.balance - totalAmount).toFixed(2)}</span>.
