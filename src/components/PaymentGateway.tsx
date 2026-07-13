@@ -22,6 +22,7 @@ import {
   Smartphone
 } from "lucide-react";
 import { Product, UserProfile } from "../types";
+import CheckoutButton from "./CheckoutButton"; // <-- ESTA ES LA LÍNEA NUEVA QUE AGREGAS
 
 // Delivery safe zones in UNSCH campus
 const UNSCH_SAFE_ZONES = [
