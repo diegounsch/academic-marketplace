@@ -84,6 +84,24 @@ export default function StudentProfile({ user, onUpdateProfile }: StudentProfile
   const [rechargeSuccess, setRechargeSuccess] = useState(false);
   const [rechargeError, setRechargeError] = useState("");
 
+  // DETECTOR DE RETORNO DE MERCADO PAGO
+  React.useEffect(() => {
+    // Leemos los parámetros que Mercado Pago inyecta en la URL al volver
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get('status');
+
+    if (status === 'success_recarga') {
+      setRechargeSuccess(true);
+      // Limpiamos la URL sutilmente para que no se vuelva a activar si refrescan la página
+      const cleanUrl = window.location.pathname;
+      window.history.replaceState({}, document.title, cleanUrl);
+    } else if (status === 'error_recarga') {
+      setRechargeError("Lamentablemente la transacción fue rechazada o cancelada por Mercado Pago. Inténtalo de nuevo.");
+      const cleanUrl = window.location.pathname;
+      window.history.replaceState({}, document.title, cleanUrl);
+    }
+  }, []);
+
   // Handler: Save profile updates
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
