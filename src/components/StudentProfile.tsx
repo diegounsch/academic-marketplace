@@ -274,8 +274,8 @@ export default function StudentProfile({ user, onUpdateProfile }: StudentProfile
     setCardCvv(e.target.value.replace(/\D/g, "").slice(0, 3));
   };
 
-  // Handler: Deposit wallet funds
-  const handleDepositFunds = (e: React.FormEvent) => {
+// Handler: Deposit wallet funds (¡AHORA CON MERCADO PAGO REAL!)
+  const handleDepositFunds = async (e: React.FormEvent) => {
     e.preventDefault();
     setRechargeError("");
     setRechargeSuccess(false);
@@ -287,6 +287,9 @@ export default function StudentProfile({ user, onUpdateProfile }: StudentProfile
       return;
     }
 
+    // =========================================================
+    // CASO A: MANTENER SIMULACIÓN MANUAL PARA YAPE / PLIN LOCAL
+    // =========================================================
     if (rechargeMethod === "yape_plin") {
       const cleanPhone = rechargeYapePhone.replace(/\s/g, "");
       if (!cleanPhone) {
@@ -301,65 +304,73 @@ export default function StudentProfile({ user, onUpdateProfile }: StudentProfile
         setRechargeError("Por favor, ingresa el nombre del titular de la cuenta móvil.");
         return;
       }
+
+      setIsProcessing(true);
+      setProcessingStep(`Estableciendo comunicación con la pasarela móvil de ${rechargeYapeOrPlin === "yape" ? "Yape" : "Plin"}...`);
+
+      setTimeout(() => {
+        setProcessingStep(`Verificando transferencia móvil y validando código de operación...`);
+      }, 1200);
+
+      setTimeout(() => {
+        setProcessingStep("Verificando transacción y acréditando saldo instantáneo...");
+      }, 2400);
+
+      setTimeout(() => {
+        const updatedUser: UserProfile = {
+          ...user,
+          balance: user.balance + amountToDeposit,
+        };
+        onUpdateProfile(updatedUser);
+        setIsProcessing(false);
+        setRechargeSuccess(true);
+        setCustomAmountText("");
+        setRechargeYapePhone("");
+        setRechargeYapeHolder("");
+      }, 3600);
+
+    // =========================================================
+    // CASO B: CONEXIÓN REAL CON MERCADO PAGO (TARJETAS)
+    // =========================================================
     } else {
-      if (cardNumber.replace(/\s/g, "").length < 16) {
-        setRechargeError("Ingresa un número de tarjeta Visa/Mastercard válido de 16 dígitos.");
-        return;
-      }
+      setIsProcessing(true);
+      setProcessingStep("Conectando con los servidores seguros de Mercado Pago...");
 
-      if (!cardName.trim()) {
-        setRechargeError("Por favor, ingresa el nombre impreso en la tarjeta.");
-        return;
-      }
+      try {
+        const response = await fetch('/api/create-preference', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: "Recarga de Saldo Monedero iPay",
+            price: amountToDeposit,
+            quantity: 1,
+            metadata: {
+              tipo_operacion: "recarga_monedero",
+              user_id: user.id || "usuario_anonimo", // Se asocia al ID del estudiante en Supabase
+              monto: amountToDeposit
+            }
+          })
+        });
 
-      if (cardExpiry.length < 5) {
-        setRechargeError("Ingresa una fecha de vencimiento válida (MM/YY).");
-        return;
-      }
+        if (!response.ok) {
+          throw new Error("No se pudo generar la orden de cobro en el backend.");
+        }
 
-      if (cardCvv.length < 3) {
-        setRechargeError("Ingresa el código CVV de 3 dígitos de seguridad.");
-        return;
+        const data = await response.json();
+        
+        if (data.init_point) {
+          setProcessingStep("Redirigiendo a la pasarela bancaria encriptada...");
+          // Redirección inmediata hacia Mercado Pago para procesar el dinero real
+          window.location.href = data.init_point;
+        } else {
+          throw new Error("No se recibió el enlace de redirección seguro.");
+        }
+
+      } catch (error: any) {
+        setIsProcessing(false);
+        setRechargeError(error.message || "Ocurrió un error inesperado al conectar con Mercado Pago.");
       }
     }
-
-    // Start checkout processing animation
-    setIsProcessing(true);
-    setProcessingStep(
-      rechargeMethod === "yape_plin"
-        ? `Estableciendo comunicación con la pasarela móvil de ${rechargeYapeOrPlin === "yape" ? "Yape" : "Plin"}...`
-        : "Estableciendo comunicación encriptada con la red UNSCH Pay..."
-    );
-
-    setTimeout(() => {
-      setProcessingStep(
-        rechargeMethod === "yape_plin"
-          ? `Verificando transferencia móvil y validando código de operación...`
-          : "Procesando cobro mediante pasarela de pago seguro bancaria..."
-      );
-    }, 1200);
-
-    setTimeout(() => {
-      setProcessingStep("Verificando transacción y acreditando saldo instantáneo...");
-    }, 2400);
-
-    setTimeout(() => {
-      const updatedUser: UserProfile = {
-        ...user,
-        balance: user.balance + amountToDeposit,
-      };
-      onUpdateProfile(updatedUser);
-      setIsProcessing(false);
-      setRechargeSuccess(true);
-      // Clear forms
-      setCardNumber("");
-      setCardName("");
-      setCardExpiry("");
-      setCardCvv("");
-      setCustomAmountText("");
-      setRechargeYapePhone("");
-      setRechargeYapeHolder("");
-    }, 3600);
   };
 
   const selectPredefinedAmount = (amt: number) => {
