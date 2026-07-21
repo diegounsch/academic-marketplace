@@ -6,6 +6,7 @@
 import { Product, Category, Condition, Seller } from "./types";
 
 export const SELLERS: Record<string, Seller> = {
+  
   sofia: {
     id: "sofia",
     name: "Sofía Gómez",
@@ -45,6 +46,19 @@ export const SELLERS: Record<string, Seller> = {
 };
 
 export const INITIAL_PRODUCTS: Product[] = [
+
+
+  {
+    id: "p9",
+    title: "caramelo (Edición Universitaria)",
+    description: "caramelo para laboratorio",
+    price: 1.10,
+    category: Category.LAB_EQUIPMENT,
+    condition: Condition.LIKE_NEW,
+    image: "/src/assets/images/stitch_plush_1783649171605.jpg",
+    seller: SELLERS.Diego,
+    createdAt: "2026-07-21",
+  },
   {
     id: "stitch_plush",
     title: "Peluche de Stitch Coleccionista (Edición Universitaria)",
