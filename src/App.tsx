@@ -2,7 +2,7 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
-import CheckoutButton from './components/CheckoutButton'; // Ajusta la ruta si es necesario
+import CheckoutButton from './components/CheckoutButton';
 import React, { useState, useEffect } from "react";
 import { supabase } from './supabaseClient';
 import { 
@@ -46,7 +46,7 @@ import {
 } from "lucide-react";
 
 export default function App() {
-  // --- Persistent States (synced with localStorage) ---
+  // --- Persistent States (synced with localStorage & Supabase) ---
   const [products, setProducts] = useState<Product[]>([]);
   const [user, setUser] = useState<UserProfile>(MOCK_USER);
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
@@ -103,29 +103,28 @@ export default function App() {
     meetingLocation: string;
   } | null>(null);
 
-  // --- Initial loading on component mount ---
+  // --- Initial loading & Supabase Sync ---
   useEffect(() => {
-    
-   // Sync products con Supabase
+    // 1. Sync products con Supabase
     const fetchProducts = async () => {
       try {
         const { data, error } = await supabase
           .from('products')
-          .select('*, profiles(full_name, avatar_url)') // Traemos producto y datos del vendedor
+          .select('*, profiles(full_name, avatar_url)')
           .eq('status', 'available');
 
         if (error) throw error;
 
         if (data && data.length > 0) {
-          // Adaptamos los datos de Supabase al formato visual de tu app
-          const formattedProducts = data.map(item => ({
+          const formattedProducts: Product[] = data.map(item => ({
             id: item.id,
             title: item.title,
             description: item.description,
-            price: item.price,
+            price: Number(item.price),
             image: item.image_url || 'https://images.unsplash.com/photo-1543002588-bfa74002ed7e?w=500&q=80',
-            category: 'Libros de Texto', // Valor por defecto temporal
-            condition: 'Usado',
+            category: (item.category as Category) || Category.TEXTBOOKS,
+            condition: (item.condition as Condition) || Condition.USED,
+            courseCode: item.course_code || undefined,
             seller: {
               id: item.seller_id,
               name: item.profiles?.full_name || 'Estudiante UNSCH',
@@ -139,42 +138,64 @@ export default function App() {
           }));
           setProducts(formattedProducts);
         } else {
-          // Si tu base de datos de Supabase está vacía, mostraremos los datos de prueba para que no se vea vacío
           setProducts(INITIAL_PRODUCTS);
         }
-      } catch (err) {
-        console.error("Error conectando a Supabase:", err.message);
-        setProducts(INITIAL_PRODUCTS); // Si hay error, caemos en los datos falsos
+      } catch (err: any) {
+        console.error("Error conectando productos con Supabase:", err.message);
+        setProducts(INITIAL_PRODUCTS);
       }
     };
 
     fetchProducts();
 
-    // Sync user profile (includes wallet balance)
-    const savedUser = localStorage.getItem("academic_user");
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-    } else {
-      localStorage.setItem("academic_user", JSON.stringify(MOCK_USER));
-    }
+    // 2. Sync user profile and wallet balance from Supabase
+    const syncUserProfile = async () => {
+      const savedUserStr = localStorage.getItem("academic_user");
+      let baseUser = savedUserStr ? JSON.parse(savedUserStr) : MOCK_USER;
+
+      if (isLoggedIn) {
+        try {
+          const { data: profile, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', baseUser.id || 'current_user')
+            .maybeSingle();
+
+          if (profile && !error) {
+            const updatedUser: UserProfile = {
+              ...baseUser,
+              name: profile.full_name || baseUser.name,
+              avatar: profile.avatar_url || baseUser.avatar,
+              isDniVerified: profile.is_dni_verified ?? baseUser.isDniVerified,
+              balance: profile.wallet_balance !== undefined && profile.wallet_balance !== null 
+                ? Number(profile.wallet_balance) 
+                : baseUser.balance
+            };
+            setUser(updatedUser);
+            localStorage.setItem("academic_user", JSON.stringify(updatedUser));
+            return;
+          }
+        } catch (err: any) {
+          console.error("Error leyendo saldo real de Supabase:", err.message);
+        }
+      }
+
+      setUser(baseUser);
+    };
+
+    syncUserProfile();
 
     // Sync watchlist
     const savedWatch = localStorage.getItem("academic_watchlist");
-    if (savedWatch) {
-      setWatchlist(JSON.parse(savedWatch));
-    }
+    if (savedWatch) setWatchlist(JSON.parse(savedWatch));
 
     // Sync cart
     const savedCart = localStorage.getItem("academic_cart");
-    if (savedCart) {
-      setCart(JSON.parse(savedCart));
-    }
+    if (savedCart) setCart(JSON.parse(savedCart));
 
     // Sync chat sessions
     const savedChats = localStorage.getItem("academic_chats");
-    if (savedChats) {
-      setChatSessions(JSON.parse(savedChats));
-    }
+    if (savedChats) setChatSessions(JSON.parse(savedChats));
 
     // Sync reports
     const savedReports = localStorage.getItem("academic_reports");
@@ -189,20 +210,12 @@ export default function App() {
           reason: "Precio irreal o abusivo",
           reporterName: "Camila Torres",
           date: "09/07/2026"
-        },
-        {
-          id: "rep_2",
-          productId: "stitch_plush",
-          productTitle: "Peluche de Stitch Coleccionista (Edición Universitaria)",
-          reason: "No es un artículo académico",
-          reporterName: "Dr. Héctor Valenzuela",
-          date: "09/07/2026"
         }
       ];
       setReports(seedReport);
       localStorage.setItem("academic_reports", JSON.stringify(seedReport));
     }
-  }, []);
+  }, [isLoggedIn]);
 
   // Helpers to update persistent storage
   const saveProducts = (updated: Product[]) => {
@@ -230,7 +243,7 @@ export default function App() {
     localStorage.setItem("academic_chats", JSON.stringify(updated));
   };
 
-  // --- Admin Panel callback operations ---
+  // --- Admin Panel operations ---
   const handleDeleteProduct = (productId: string) => {
     const updated = products.filter((p) => p.id !== productId);
     saveProducts(updated);
@@ -275,8 +288,8 @@ export default function App() {
   // --- Student Auth operations ---
   const handleLoginSuccess = async (loggedInUser: UserProfile) => {
     try {
-      // Intentamos registrar o actualizar el perfil del alumno en Supabase usando 'upsert'
-      const { error } = await supabase
+      // Intentamos sincronizar con Supabase
+      const { data: profile, error } = await supabase
         .from('profiles')
         .upsert({
           id: loggedInUser.id || 'current_user',
@@ -285,21 +298,27 @@ export default function App() {
           is_dni_verified: loggedInUser.isDniVerified,
           wallet_balance: loggedInUser.balance,
           updated_at: new Date().toISOString()
-        }, { onConflict: 'id' });
+        }, { onConflict: 'id' })
+        .select()
+        .single();
 
       if (error) throw error;
 
-      // Si se guardó bien en la base de datos, lo mantenemos en la interfaz de React
-      setUser(loggedInUser);
-      localStorage.setItem("academic_user", JSON.stringify(loggedInUser));
+      const finalUser = {
+        ...loggedInUser,
+        balance: profile?.wallet_balance !== undefined ? Number(profile.wallet_balance) : loggedInUser.balance
+      };
+
+      setUser(finalUser);
+      localStorage.setItem("academic_user", JSON.stringify(finalUser));
       setIsLoggedIn(true);
       localStorage.setItem("academic_is_logged_in", "true");
       
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error al sincronizar el perfil con Supabase:", err.message);
-      // Fallback: Permitimos loguear localmente de todas formas para no trabar al usuario
       setUser(loggedInUser);
       setIsLoggedIn(true);
+      localStorage.setItem("academic_is_logged_in", "true");
     }
   };
 
@@ -326,7 +345,7 @@ export default function App() {
       setShowAuthModal(true);
       return;
     }
-    if (cart.includes(product.id)) return; // prevent duplicates
+    if (cart.includes(product.id)) return;
     const updated = [...cart, product.id];
     saveCart(updated);
   };
@@ -336,8 +355,8 @@ export default function App() {
     saveCart(updated);
   };
 
-  // --- New Manual Listing Posting ---
- const handlePublishProduct = async (p: {
+  // --- Manual Listing Posting ---
+  const handlePublishProduct = async (p: {
     title: string;
     category: Category;
     condition: Condition;
@@ -352,7 +371,6 @@ export default function App() {
     }
 
     try {
-      // 1. Guardamos el producto en la tabla 'products' de Supabase
       const { data, error } = await supabase
         .from('products')
         .insert([
@@ -364,7 +382,7 @@ export default function App() {
             condition: p.condition,
             course_code: p.courseCode || null,
             image_url: p.image,
-            seller_id: user.id || 'current_user', // Enlazamos al estudiante actual
+            seller_id: user.id || 'current_user',
             status: 'available'
           }
         ])
@@ -372,17 +390,16 @@ export default function App() {
 
       if (error) throw error;
 
-      alert("¡Artículo publicado con éxito en Supabase!");
+      alert("¡Artículo publicado con éxito!");
       
-      // 2. Recargamos la página o actualizamos el estado local para mostrar el nuevo item
       if (data && data[0]) {
         const addedProduct: Product = {
           id: data[0].id,
           title: data[0].title,
           description: data[0].description,
-          price: data[0].price,
-          category: data[0].category,
-          condition: data[0].condition,
+          price: Number(data[0].price),
+          category: data[0].category as Category,
+          condition: data[0].condition as Condition,
           courseCode: data[0].course_code,
           image: data[0].image_url,
           seller: {
@@ -397,15 +414,14 @@ export default function App() {
           isCustom: true,
         };
         setProducts([addedProduct, ...products]);
-        setActiveTab("marketplace"); // Redirigir al inicio
+        setActiveTab("marketplace");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error al publicar en Supabase:", err.message);
       alert("Hubo un problema al guardar tu producto en la nube.");
     }
   };
 
-  // --- AI-assisted listing posting callback ---
   const handlePublishFromAI = (p: {
     title: string;
     category: Category;
@@ -414,7 +430,6 @@ export default function App() {
     description: string;
     courseCode: string;
   }) => {
-    // Use standard image based on category
     const presets: Record<string, string> = {
       "Libros de Texto": "https://images.unsplash.com/photo-1543002588-bfa74002ed7e?w=500&auto=format&fit=crop&q=80",
       "Apuntes y Guías": "https://images.unsplash.com/photo-1559757175-5700dde675bc?w=500&auto=format&fit=crop&q=80",
@@ -424,18 +439,6 @@ export default function App() {
     };
 
     let chosenImage = presets[p.category] || presets["Libros de Texto"];
-
-    // Check for Stitch keywords to match the Stitch images
-    const lowerTitle = p.title.toLowerCase();
-    if (lowerTitle.includes("stitch")) {
-      if (lowerTitle.includes("taza") || lowerTitle.includes("mug") || lowerTitle.includes("café")) {
-        chosenImage = "/src/assets/images/stitch_mug_1783649200664.jpg";
-      } else if (lowerTitle.includes("mochila") || lowerTitle.includes("backpack") || lowerTitle.includes("bolso")) {
-        chosenImage = "/src/assets/images/stitch_backpack_1783649183900.jpg";
-      } else {
-        chosenImage = "/src/assets/images/stitch_plush_1783649171605.jpg";
-      }
-    }
 
     handlePublishProduct({
       ...p,
@@ -449,14 +452,13 @@ export default function App() {
       setShowAuthModal(true);
       return;
     }
-    // Find if session already exists
     let session = chatSessions.find((s) => s.productId === product.id);
 
     if (!session) {
       const initialMessage: Message = {
         id: `m_init_${Date.now()}`,
         sender: "seller",
-        text: `¡Hola, qué tal! Soy ${product.seller.name}. Me alegra tu interés en mi "${product.title}". El precio original es $${product.price.toFixed(2)}, pero me puedes proponer tu mejor oferta aquí. ¿En cuánto te gustaría negociarlo?`,
+        text: `¡Hola, qué tal! Soy ${product.seller.name}. Me alegra tu interés en mi "${product.title}". El precio original es S/. ${product.price.toFixed(2)}, pero me puedes proponer tu mejor oferta aquí. ¿En cuánto te gustaría negociarlo?`,
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       };
 
@@ -479,7 +481,6 @@ export default function App() {
   const handleSendMessage = async (text: string, isOffer: boolean = false, offerAmount?: number) => {
     if (!activeChatSession) return;
 
-    // Find respective product
     const product = products.find((p) => p.id === activeChatSession.productId);
     if (!product) return;
 
@@ -492,7 +493,6 @@ export default function App() {
       offerAmount,
     };
 
-    // Append user message instantly
     const updatedMessages = [...activeChatSession.messages, userMsg];
     const sessionWithUserMsg: ChatSession = {
       ...activeChatSession,
@@ -500,14 +500,12 @@ export default function App() {
       lastUpdated: new Date().toISOString(),
     };
 
-    // Update state & save
     setActiveChatSession(sessionWithUserMsg);
     const updatedSessions = chatSessions.map((s) =>
       s.productId === activeChatSession.productId ? sessionWithUserMsg : s
     );
     saveChatSessions(updatedSessions);
 
-    // Call server negotiation endpoint
     setIsSendingChat(true);
 
     try {
@@ -524,7 +522,7 @@ export default function App() {
       });
 
       if (!response.ok) {
-        throw new Error("La negociación falló. Revisa tu red o vuelve a ofertar.");
+        throw new Error("La negociación falló.");
       }
 
       const data = await response.json();
@@ -551,7 +549,6 @@ export default function App() {
       saveChatSessions(reUpdatedSessions);
     } catch (err) {
       console.error(err);
-      // Fallback seller error response
       const errMessage: Message = {
         id: `m_err_${Date.now()}`,
         sender: "seller",
@@ -568,24 +565,35 @@ export default function App() {
     }
   };
 
-  // --- Purchase / Buy triggers and receipt builders ---
-  const handlePaymentSuccess = (product: Product, buyPrice: number, deliverySpot: string, paymentMethod: string) => {
-    // If they paid with wallet balance, deduct it
+  // --- Purchase / Buy triggers & Supabase Balance Deduction ---
+  const handlePaymentSuccess = async (product: Product, buyPrice: number, deliverySpot: string, paymentMethod: string) => {
+    // Si pagó con saldo de la billetera, descontamos y sincronizamos con Supabase
     if (paymentMethod === "UNSCH Pay") {
+      const newBalance = Math.max(0, user.balance - (buyPrice + 0.99));
       const updatedUser = {
         ...user,
-        balance: user.balance - (buyPrice + 0.99), // price + academic safe fee
+        balance: newBalance,
       };
       saveUser(updatedUser);
+
+      // Descontar en Supabase real
+      try {
+        await supabase
+          .from('profiles')
+          .update({ wallet_balance: newBalance })
+          .eq('id', user.id || 'current_user');
+      } catch (err: any) {
+        console.error("Error al actualizar el saldo en Supabase:", err.message);
+      }
     }
 
-    // Record receipt
+    // Registrar recibo
     setTransactionReceipt({
       id: `TXN-${Math.floor(100000 + Math.random() * 900000)}`,
       productTitle: product.title,
       price: buyPrice,
       sellerName: product.seller.name,
-      date: new Date().toLocaleDateString("es-ES", {
+      date: new Date().toLocaleDateString("es-PE", {
         day: "numeric",
         month: "long",
         year: "numeric",
@@ -595,18 +603,13 @@ export default function App() {
       meetingLocation: deliverySpot,
     });
 
-    // Remove bought item from available catalog
     const remainingProducts = products.filter((p) => p.id !== product.id);
     saveProducts(remainingProducts);
 
-    // Clear from cart / watchlist
     saveCart(cart.filter((id) => id !== product.id));
     saveWatchlist(watchlist.filter((id) => id !== product.id));
-
-    // Remove negotiation session
     saveChatSessions(chatSessions.filter((s) => s.productId !== product.id));
 
-    // Reset checkout states
     setCheckoutProduct(null);
     setCheckoutAgreedPrice(0);
     setActiveChatSession(null);
@@ -615,11 +618,9 @@ export default function App() {
   };
 
   const handleCartCheckout = () => {
-    // Get products in cart
     const cartProducts = products.filter((p) => cart.includes(p.id));
     if (cartProducts.length === 0) return;
 
-    // Trigger payment gateway for first item
     const productToBuy = cartProducts[0];
     setCheckoutProduct(productToBuy);
     setCheckoutAgreedPrice(productToBuy.price);
@@ -638,7 +639,7 @@ export default function App() {
   }).sort((a, b) => {
     if (sortBy === "price_asc") return a.price - b.price;
     if (sortBy === "price_desc") return b.price - a.price;
-    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(); // newest
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
 
   return (
@@ -713,7 +714,7 @@ export default function App() {
                   </div>
                   <div>
                     <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] block">TOTAL DEBITADO:</span>
-                    <span className="font-black text-secondary text-sm">${transactionReceipt.price.toFixed(2)}</span>
+                    <span className="font-black text-secondary text-sm">S/. {transactionReceipt.price.toFixed(2)}</span>
                   </div>
                 </div>
                 <div>
@@ -786,7 +787,6 @@ export default function App() {
                     Filtrar Búsqueda
                   </h3>
                   
-                  {/* Reset filters shortcut */}
                   {(selectedCategory !== "all" || selectedCondition !== "all" || searchQuery !== "") && (
                     <button
                       onClick={() => {
@@ -794,7 +794,7 @@ export default function App() {
                         setSelectedCondition("all");
                         setSearchQuery("");
                       }}
-                      className="text-[10px] text-red-500 hover:underline font-bold"
+                      className="text-[10px] text-red-500 hover:underline font-bold cursor-pointer"
                     >
                       Limpiar
                     </button>
@@ -812,7 +812,7 @@ export default function App() {
                       className={`text-left px-3 py-2 rounded text-xs transition-all ${
                         selectedCategory === "all"
                           ? "bg-secondary text-white font-bold"
-                          : "text-slate-600 hover:bg-slate-50 font-medium"
+                          : "text-slate-600 hover:bg-slate-50 font-medium cursor-pointer"
                       }`}
                     >
                       Todos los Artículos
@@ -824,7 +824,7 @@ export default function App() {
                         className={`text-left px-3 py-2 rounded text-xs transition-all flex items-center justify-between ${
                           selectedCategory === cat
                             ? "bg-secondary text-white font-bold"
-                            : "text-slate-600 hover:bg-slate-50 font-medium"
+                            : "text-slate-600 hover:bg-slate-50 font-medium cursor-pointer"
                         }`}
                       >
                         <span>{cat}</span>
@@ -837,29 +837,29 @@ export default function App() {
                 </div>
 
                 {/* Filter Condition */}
-                <div className="space-y-2 border-t border-slate-100 pt-4">
+                <div className="space-y-2 pt-2 border-t border-slate-100">
                   <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wide">
-                    Estado de Conservación
+                    Estado del Artículo
                   </label>
                   <div className="flex flex-col gap-1">
                     <button
                       onClick={() => setSelectedCondition("all")}
-                      className={`text-left px-3 py-2 rounded text-xs transition-all ${
+                      className={`text-left px-3 py-1.5 rounded text-xs transition-all ${
                         selectedCondition === "all"
-                          ? "bg-secondary text-white font-bold"
-                          : "text-slate-600 hover:bg-slate-50 font-medium"
+                          ? "text-secondary font-bold"
+                          : "text-slate-600 hover:bg-slate-50 cursor-pointer"
                       }`}
                     >
-                      Cualquier Estado
+                      Cualquier condición
                     </button>
                     {Object.values(Condition).map((cond) => (
                       <button
                         key={cond}
                         onClick={() => setSelectedCondition(cond)}
-                        className={`text-left px-3 py-2 rounded text-xs transition-all ${
+                        className={`text-left px-3 py-1.5 rounded text-xs transition-all ${
                           selectedCondition === cond
-                            ? "bg-secondary text-white font-bold"
-                            : "text-slate-600 hover:bg-slate-50 font-medium"
+                            ? "text-secondary font-bold bg-slate-100"
+                            : "text-slate-600 hover:bg-slate-50 cursor-pointer"
                         }`}
                       >
                         {cond}
@@ -867,60 +867,53 @@ export default function App() {
                     ))}
                   </div>
                 </div>
-
-                {/* Sort Order */}
-                <div className="space-y-2 border-t border-slate-100 pt-4">
-                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wide flex items-center gap-1">
-                    <ArrowUpDown className="w-3.5 h-3.5" />
-                    Ordenar resultados
-                  </label>
-                  <select
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value)}
-                    className="w-full h-9 px-2.5 rounded border border-slate-200 text-xs focus:outline-none focus:border-secondary bg-white font-medium text-slate-700"
-                  >
-                    <option value="newest">Más Recientes primero</option>
-                    <option value="price_asc">Precio: Menor a Mayor</option>
-                    <option value="price_desc">Precio: Mayor a Menor</option>
-                  </select>
-                </div>
               </div>
 
-              {/* Main Product Grid results */}
+              {/* Product Grid Header & List */}
               <div className="lg:col-span-9 space-y-4">
                 
-                {/* Search / Result Count stats */}
-                <div className="flex items-center justify-between text-xs text-slate-500 font-sans border-b border-slate-200 pb-3">
-                  <span>
-                    Mostrando <span className="font-bold text-slate-800">{filteredProducts.length}</span> artículos académicos
-                  </span>
-                  {searchQuery && (
-                    <span>
-                      Búsqueda: "<span className="font-semibold text-secondary">{searchQuery}</span>"
-                    </span>
-                  )}
+                {/* Bar info & Sort */}
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-3.5 rounded-md border border-slate-200/80 gap-3">
+                  <p className="text-xs text-slate-500 font-sans">
+                    Mostrando <strong className="text-slate-800">{filteredProducts.length}</strong> publicaciones disponibles
+                  </p>
+
+                  <div className="flex items-center gap-2 self-end sm:self-auto">
+                    <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
+                    <span className="text-xs text-slate-400">Ordenar por:</span>
+                    <select
+                      value={sortBy}
+                      onChange={(e) => setSortBy(e.target.value)}
+                      className="text-xs font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded px-2.5 py-1 focus:outline-none focus:border-secondary cursor-pointer"
+                    >
+                      <option value="newest">Más Recientes</option>
+                      <option value="price_asc">Menor Precio</option>
+                      <option value="price_desc">Mayor Precio</option>
+                    </select>
+                  </div>
                 </div>
 
-                {/* Grid layout */}
+                {/* Grid */}
                 {filteredProducts.length === 0 ? (
-                  <div className="bg-white rounded-md border border-slate-200/80 p-12 text-center shadow-ambient flex flex-col items-center justify-center min-h-[300px]">
-                    <AlertCircle className="w-12 h-12 text-slate-300 mb-3" />
-                    <h4 className="font-sans font-bold text-slate-600 text-sm">No se encontraron artículos</h4>
-                    <p className="text-xs text-slate-400 mt-1 max-w-xs">
-                      No hay publicaciones que coincidan con tus filtros de búsqueda. Intenta limpiando las selecciones.
+                  <div className="bg-white rounded-md border border-slate-200 p-12 text-center space-y-3">
+                    <AlertCircle className="w-10 h-10 text-slate-300 mx-auto" />
+                    <h3 className="text-base font-bold text-slate-700">No se encontraron artículos</h3>
+                    <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                      Intenta ajustar tus filtros de búsqueda o escribe otra palabra en la barra superior.
                     </p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6" id="product-grid">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {filteredProducts.map((product) => (
                       <ProductCard
                         key={product.id}
                         product={product}
-                        onSelect={setSelectedProduct}
-                        onNegotiate={handleStartNegotiate}
-                        onAddToCart={handleAddToCart}
-                        onToggleWatchlist={handleToggleWatchlist}
                         isWatchlisted={watchlist.includes(product.id)}
+                        isInCart={cart.includes(product.id)}
+                        onToggleWatchlist={handleToggleWatchlist}
+                        onAddToCart={handleAddToCart}
+                        onNegotiate={handleStartNegotiate}
+                        onSelect={setSelectedProduct}
                       />
                     ))}
                   </div>
@@ -930,378 +923,208 @@ export default function App() {
           </div>
         )}
 
-        {/* --- VIEW: AI PRICE VALUATION ASSISTANT --- */}
+        {/* --- VIEW: AI EVALUATOR / VALUADOR --- */}
         {activeTab === "evaluator" && (
-          <AIEvaluator onPublishFromAI={handlePublishFromAI} />
+          <AIEvaluator onPublish={handlePublishFromAI} />
         )}
 
-        {/* --- VIEW: MY ACTIVE NEGOTIATIONS TIMELINE --- */}
-        {activeTab === "negotiations" && (
-          <div className="max-w-4xl mx-auto py-4 space-y-6">
-            <div className="bg-white rounded-md border border-slate-200 p-6 shadow-ambient">
-              <h2 className="text-lg font-bold text-slate-800 tracking-tight flex items-center gap-2">
-                Centro de Regateo Estudiantil
-              </h2>
-              <p className="text-xs text-slate-500 mt-1 max-w-2xl leading-relaxed">
-                Aquí se listan tus negociaciones activas en tiempo real con alumnos y docentes del campus. Revisa el estatus, retoma las conversaciones o procede a concretar la compra.
-              </p>
-            </div>
-
-            {chatSessions.length === 0 ? (
-              <div className="bg-slate-100 rounded-md border-2 border-dashed border-slate-300 p-12 text-center flex flex-col items-center justify-center">
-                <MessageSquare className="w-12 h-12 text-slate-300 mb-3" />
-                <h4 className="font-sans font-bold text-slate-600 text-sm">No tienes negociaciones activas</h4>
-                <p className="text-xs text-slate-400 mt-1 max-w-sm">
-                  Explora el catálogo y presiona "Regatear" en el artículo de tu interés para entablar un chat con su vendedor.
-                </p>
-              </div>
-            ) : (
-              <div className="bg-white rounded-md border border-slate-200 shadow-ambient overflow-hidden divide-y divide-slate-100">
-                {chatSessions.map((session) => {
-                  const product = products.find((p) => p.id === session.productId);
-                  if (!product) return null; // skipped if sold out
-
-                  return (
-                    <div 
-                      key={session.productId}
-                      className="p-4 flex flex-col md:flex-row items-center justify-between gap-4 hover:bg-slate-50/80 transition-colors cursor-pointer"
-                      onClick={() => {
-                        setActiveChatSession(session);
-                        setActiveTab("chat");
-                      }}
-                    >
-                      {/* Left side details */}
-                      <div className="flex items-center gap-4 w-full md:w-auto">
-                        <img
-                          src={product.image}
-                          alt={product.title}
-                          referrerPolicy="no-referrer"
-                          className="w-12 h-12 rounded object-cover border border-slate-200 shadow-xs"
-                        />
-                        <div>
-                          <h4 className="text-xs font-bold text-slate-800 leading-tight line-clamp-1 max-w-md">
-                            {product.title}
-                          </h4>
-                          <div className="flex items-center gap-2 mt-1.5 text-xs text-slate-500">
-                            <span>Vendedor: <span className="font-semibold text-slate-700">{product.seller.name}</span></span>
-                            <span>•</span>
-                            <span className="bg-slate-100 px-1.5 py-0.5 rounded text-[10px] text-slate-600 font-mono font-bold">
-                              Original: ${product.price.toFixed(2)}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Right side stats and button triggers */}
-                      <div className="flex items-center justify-between md:justify-end gap-6 w-full md:w-auto self-stretch md:self-auto border-t border-slate-100 pt-3 md:border-none md:pt-0">
-                        {/* Status tag */}
-                        <div className="text-left md:text-right">
-                          <span className="text-[9px] block text-slate-400 font-bold uppercase tracking-wider font-mono">ESTATUS</span>
-                          {session.status === "accepted" ? (
-                            <span className="bg-green-100 text-green-800 text-[10px] px-2.5 py-0.5 rounded font-bold border border-green-200">
-                              Trato Cerrado por ${session.currentPrice.toFixed(2)}
-                            </span>
-                          ) : (
-                            <span className="bg-amber-100 text-amber-800 text-[10px] px-2.5 py-0.5 rounded font-bold border border-amber-200">
-                              En Regateo / Propuesta activa
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Continue btn */}
-                        <button
-                          className="px-4 py-2 bg-secondary hover:bg-secondary-light text-white text-xs font-bold rounded flex items-center gap-1"
-                        >
-                          Continuar Chat
-                          <ChevronRight className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* --- VIEW: CREATE / POST NEW LISTING --- */}
+        {/* --- VIEW: SELL FORM --- */}
         {activeTab === "sell" && (
-          <SellForm 
-            onPublish={handlePublishProduct} 
-            setActiveTab={setActiveTab} 
-            isDniVerified={!!user?.isDniVerified} 
-          />
+          <SellForm onPublish={handlePublishProduct} />
         )}
 
-        {/* --- VIEW: DETAILED LIVE IA CHAT NEGOTIATOR --- */}
-        {activeTab === "chat" && activeChatSession && (
-          (() => {
-            const product = products.find((p) => p.id === activeChatSession.productId);
-            if (!product) {
-              return (
-                <div className="bg-white p-8 rounded text-center border">
-                  Este artículo ya ha sido vendido por el oferente.
-                </div>
-              );
-            }
-            return (
-              <NegotiationChat
-                session={activeChatSession}
-                product={product}
-                onSendMessage={handleSendMessage}
-                onAcceptFinalDeal={(price) => {
-                  setCheckoutProduct(product);
-                  setCheckoutAgreedPrice(price);
-                }}
-                onBack={() => {
-                  setActiveTab("negotiations");
-                  setActiveChatSession(null);
-                }}
-                isSending={isSendingChat}
-              />
-            );
-          })()
-        )}
-
-        {/* --- VIEW: STUDENT PROFILE & WALLET --- */}
-        {activeTab === "profile" && isLoggedIn && (
-          <StudentProfile 
-            user={user} 
-            onUpdateProfile={saveUser} 
-          />
-        )}
-
-        {/* --- VIEW: ADMINISTRATIVE DASHBOARD CONTROL PANEL --- */}
-        {activeTab === "admin" && isLoggedIn && user?.isAdmin && (
-          <AdminDashboard
+        {/* --- VIEW: CHAT NEGOTIATIONS --- */}
+        {activeTab === "chat" && (
+          <NegotiationChat
+            sessions={chatSessions}
+            activeSession={activeChatSession}
             products={products}
-            onDeleteProduct={handleDeleteProduct}
+            onSelectSession={setActiveChatSession}
+            onSendMessage={handleSendMessage}
+            onBuyNow={(prod, price) => {
+              setCheckoutProduct(prod);
+              setCheckoutAgreedPrice(price);
+            }}
+            isSending={isSendingChat}
+          />
+        )}
+
+        {/* --- VIEW: STUDENT PROFILE --- */}
+        {activeTab === "profile" && (
+          <StudentProfile
+            user={user}
+            userProducts={products.filter((p) => p.seller.id === user.id || p.isCustom)}
+            onUpdateProfile={(updated) => saveUser(updated)}
+          />
+        )}
+
+        {/* --- VIEW: ADMIN DASHBOARD --- */}
+        {activeTab === "admin" && (
+          <AdminDashboard
             reports={reports}
+            products={products}
             onDismissReport={handleDismissReport}
             onBlockProduct={handleBlockProduct}
+            onDeleteProduct={handleDeleteProduct}
           />
         )}
-
       </main>
 
-      {/* --- CART SLIDE-OVER DRAWER MODAL --- */}
-      {showCart && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex justify-end animate-fadeIn">
-          <div className="bg-white w-full max-w-md h-full flex flex-col p-6 shadow-hover animate-slideLeft">
-            {/* Header */}
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <h3 className="font-sans font-extrabold text-slate-800 text-base flex items-center gap-2">
-                <ShoppingBag className="w-5 h-5 text-secondary" />
-                Mi Carrito de Compras
-              </h3>
-              <button 
-                onClick={() => setShowCart(false)}
-                className="p-1 rounded-full hover:bg-slate-100 cursor-pointer text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Cart list content */}
-            {cart.length === 0 ? (
-              <div className="flex-grow flex flex-col items-center justify-center text-center p-6">
-                <ShoppingBag className="w-12 h-12 text-slate-300 mb-2" />
-                <h4 className="font-sans font-bold text-slate-600 text-sm">Tu carrito está vacío</h4>
-                <p className="text-xs text-slate-400 mt-1 max-w-xs">
-                  Agrega libros, calculadoras o apuntes de clase para proceder al pago unificado.
-                </p>
-              </div>
-            ) : (
-              <div className="flex-grow overflow-y-auto divide-y divide-slate-100 pr-1 py-4">
-                {products.filter((p) => cart.includes(p.id)).map((item) => (
-                  <div key={item.id} className="py-3.5 flex gap-3 items-start justify-between">
-                    <img
-                      src={item.image}
-                      alt={item.title}
-                      referrerPolicy="no-referrer"
-                      className="w-14 h-14 rounded object-cover border border-slate-200 shadow-xs"
-                    />
-                    <div className="flex-grow min-w-0">
-                      <h4 className="text-xs font-bold text-slate-800 truncate leading-snug">{item.title}</h4>
-                      <p className="text-[10px] text-slate-400 font-semibold">{item.category}</p>
-                      <span className="text-secondary font-sans font-black text-xs block mt-1">
-                        ${item.price.toFixed(2)}
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => handleRemoveFromCart(item.id)}
-                      className="p-1 text-slate-400 hover:text-red-500 rounded hover:bg-slate-50 transition-colors cursor-pointer"
-                      title="Eliminar del carrito"
-                    >
-                      <Trash2 className="w-4.5 h-4.5" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Cart Footer */}
-            {cart.length > 0 && (
-              <div className="border-t border-slate-100 pt-4 mt-auto space-y-4">
-                {/* Pricing sum */}
-                <div className="flex justify-between items-center font-sans text-slate-700">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Total a pagar:</span>
-                  <span className="font-extrabold text-secondary text-xl">
-                    ${products.filter((p) => cart.includes(p.id)).reduce((sum, p) => sum + p.price, 0).toFixed(2)}
-                  </span>
-                </div>
-
-                <div className="bg-slate-50 p-2.5 rounded border border-slate-100 text-[10px] text-slate-400 leading-normal flex items-start gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-green-500 shrink-0" />
-                  <span>
-                    El carrito procesará por ahora el primer producto listado para su entrega e intercambio custodiado presencial en el campus de la UNSCH.
-                  </span>
-                </div>
-
-                <button
-                  onClick={handleCartCheckout}
-                  className="w-full h-12 bg-secondary hover:bg-secondary-light text-white text-xs font-bold rounded-md shadow-md flex items-center justify-center gap-2 cursor-pointer transition-colors"
-                  id="checkout-btn"
-                >
-                  Confirmar Compra Segura
-                </button>
-              </div>
-            )}
-
-          </div>
-        </div>
-      )}
-
-      {/* --- WATCHLIST SLIDE-OVER DRAWER MODAL --- */}
-      {showWatchlist && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex justify-end animate-fadeIn">
-          <div className="bg-white w-full max-w-md h-full flex flex-col p-6 shadow-hover animate-slideLeft">
-            {/* Header */}
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <h3 className="font-sans font-extrabold text-slate-800 text-base flex items-center gap-2">
-                <Heart className="w-5 h-5 text-red-500 fill-red-500" />
-                Mi Lista de Deseos (Watchlist)
-              </h3>
-              <button 
-                onClick={() => setShowWatchlist(false)}
-                className="p-1 rounded-full hover:bg-slate-100 cursor-pointer text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Watchlist content */}
-            {watchlist.length === 0 ? (
-              <div className="flex-grow flex flex-col items-center justify-center text-center p-6">
-                <Heart className="w-12 h-12 text-slate-300 mb-2" />
-                <h4 className="font-sans font-bold text-slate-600 text-sm">Tu lista de deseos está vacía</h4>
-                <p className="text-xs text-slate-400 mt-1 max-w-xs">
-                  Guarda publicaciones de tu interés presionando el ícono de corazón en las tarjetas de artículos.
-                </p>
-              </div>
-            ) : (
-              <div className="flex-grow overflow-y-auto divide-y divide-slate-100 pr-1 py-4">
-                {products.filter((p) => watchlist.includes(p.id)).map((item) => (
-                  <div 
-                    key={item.id} 
-                    className="py-3 flex gap-3 items-center justify-between hover:bg-slate-50 rounded px-1 cursor-pointer transition-colors"
-                    onClick={() => {
-                      setSelectedProduct(item);
-                      setShowWatchlist(false);
-                    }}
-                  >
-                    <img
-                      src={item.image}
-                      alt={item.title}
-                      referrerPolicy="no-referrer"
-                      className="w-12 h-12 rounded object-cover border border-slate-200 shadow-xs"
-                    />
-                    <div className="flex-grow min-w-0">
-                      <h4 className="text-xs font-bold text-slate-800 truncate leading-snug">{item.title}</h4>
-                      <span className="text-secondary font-sans font-bold text-xs block mt-0.5">
-                        ${item.price.toFixed(2)}
-                      </span>
-                    </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleToggleWatchlist(item);
-                      }}
-                      className="p-1 text-red-500 hover:bg-red-50 rounded transition-colors cursor-pointer"
-                      title="Quitar de favoritos"
-                    >
-                      <X className="w-4.5 h-4.5" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* --- POPUP DETAILED VIEW MODAL --- */}
+      {/* --- MODAL: PRODUCT DETAIL --- */}
       {selectedProduct && (
         <ProductDetailModal
           product={selectedProduct}
-          onClose={() => setSelectedProduct(null)}
-          onNegotiate={handleStartNegotiate}
-          onAddToCart={handleAddToCart}
-          onToggleWatchlist={handleToggleWatchlist}
           isWatchlisted={watchlist.includes(selectedProduct.id)}
-          onReportProduct={handleReportProduct}
+          isInCart={cart.includes(selectedProduct.id)}
+          onClose={() => setSelectedProduct(null)}
+          onToggleWatchlist={handleToggleWatchlist}
+          onAddToCart={handleAddToCart}
+          onNegotiate={(prod) => {
+            setSelectedProduct(null);
+            handleStartNegotiate(prod);
+          }}
+          onReport={handleReportProduct}
         />
       )}
 
-      {/* --- SECURE PAYMENT GATEWAY MODAL --- */}
+      {/* --- SLIDE OVER: CART --- */}
+      {showCart && (
+        <div className="fixed inset-0 z-50 overflow-hidden bg-black/50 backdrop-blur-xs flex justify-end">
+          <div className="w-full max-w-md bg-white h-full shadow-2xl flex flex-col animate-slideInRight">
+            <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-2">
+                <ShoppingBag className="w-5 h-5 text-secondary" />
+                <h3 className="font-bold text-slate-800 text-sm">Tu Carrito de Compras</h3>
+              </div>
+              <button 
+                onClick={() => setShowCart(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-grow overflow-y-auto p-4 space-y-3">
+              {cart.length === 0 ? (
+                <div className="text-center py-12 text-slate-400 space-y-2">
+                  <ShoppingBag className="w-12 h-12 mx-auto stroke-1 text-slate-300" />
+                  <p className="text-xs">Tu carrito está vacío</p>
+                </div>
+              ) : (
+                products
+                  .filter((p) => cart.includes(p.id))
+                  .map((item) => (
+                    <div key={item.id} className="flex gap-3 p-2.5 bg-slate-50 rounded border border-slate-200 items-center">
+                      <img src={item.image} alt={item.title} className="w-14 h-14 object-cover rounded" />
+                      <div className="flex-grow min-w-0">
+                        <h4 className="font-bold text-slate-800 text-xs truncate">{item.title}</h4>
+                        <p className="text-xs font-black text-secondary mt-0.5">S/. {item.price.toFixed(2)}</p>
+                      </div>
+                      <button
+                        onClick={() => handleRemoveFromCart(item.id)}
+                        className="text-slate-400 hover:text-red-500 p-1 cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))
+              )}
+            </div>
+
+            {cart.length > 0 && (
+              <div className="p-4 border-t border-slate-200 bg-white space-y-3">
+                <div className="flex justify-between items-center text-sm font-bold text-slate-800">
+                  <span>Total Estudiantil:</span>
+                  <span className="text-secondary text-base">
+                    S/. {products
+                      .filter((p) => cart.includes(p.id))
+                      .reduce((sum, p) => sum + p.price, 0)
+                      .toFixed(2)}
+                  </span>
+                </div>
+                <button
+                  onClick={handleCartCheckout}
+                  className="w-full h-11 bg-secondary hover:bg-secondary-light text-white font-bold text-xs rounded shadow transition-colors cursor-pointer"
+                >
+                  Proceder al Pago Segura
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* --- SLIDE OVER: WATCHLIST --- */}
+      {showWatchlist && (
+        <div className="fixed inset-0 z-50 overflow-hidden bg-black/50 backdrop-blur-xs flex justify-end">
+          <div className="w-full max-w-md bg-white h-full shadow-2xl flex flex-col animate-slideInRight">
+            <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-2">
+                <Heart className="w-5 h-5 text-red-500 fill-red-500" />
+                <h3 className="font-bold text-slate-800 text-sm">Lista de Guardados</h3>
+              </div>
+              <button 
+                onClick={() => setShowWatchlist(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-grow overflow-y-auto p-4 space-y-3">
+              {watchlist.length === 0 ? (
+                <div className="text-center py-12 text-slate-400 space-y-2">
+                  <Heart className="w-12 h-12 mx-auto stroke-1 text-slate-300" />
+                  <p className="text-xs">No tienes artículos guardados</p>
+                </div>
+              ) : (
+                products
+                  .filter((p) => watchlist.includes(p.id))
+                  .map((item) => (
+                    <div key={item.id} className="flex gap-3 p-2.5 bg-slate-50 rounded border border-slate-200 items-center">
+                      <img src={item.image} alt={item.title} className="w-14 h-14 object-cover rounded" />
+                      <div className="flex-grow min-w-0">
+                        <h4 className="font-bold text-slate-800 text-xs truncate">{item.title}</h4>
+                        <p className="text-xs font-black text-secondary mt-0.5">S/. {item.price.toFixed(2)}</p>
+                      </div>
+                      <button
+                        onClick={() => handleToggleWatchlist(item)}
+                        className="text-slate-400 hover:text-red-500 p-1 cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL: AUTH / LOGIN --- */}
+      {showAuthModal && (
+        <AuthScreen
+          onLoginSuccess={(loggedInUser) => {
+            handleLoginSuccess(loggedInUser);
+            setShowAuthModal(false);
+          }}
+          onClose={() => setShowAuthModal(false)}
+        />
+      )}
+
+      {/* --- MODAL: PAYMENT GATEWAY --- */}
       {checkoutProduct && (
         <PaymentGateway
           product={checkoutProduct}
           agreedPrice={checkoutAgreedPrice}
           user={user}
-          onPaymentSuccess={(price, deliverySpot, method) => handlePaymentSuccess(checkoutProduct, price, deliverySpot, method)}
-          onCancel={() => {
+          onClose={() => {
             setCheckoutProduct(null);
             setCheckoutAgreedPrice(0);
           }}
+          onSuccess={handlePaymentSuccess}
         />
       )}
-
-      {/* --- AUTHENTICATION MODAL OVERLAY --- */}
-      {showAuthModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
-          <div className="w-full max-w-5xl my-8 relative">
-            <AuthScreen
-              onLoginSuccess={(loggedInUser) => {
-                handleLoginSuccess(loggedInUser);
-                setShowAuthModal(false);
-              }}
-              mockUser={MOCK_USER}
-              onClose={() => setShowAuthModal(false)}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Footer bar */}
-      <footer className="bg-slate-900 text-slate-400 py-8 border-t border-slate-800 mt-12 text-xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center space-y-3 font-sans">
-          <div className="flex items-center justify-center gap-1">
-            <BookOpen className="w-4.5 h-4.5 text-primary-container fill-primary-container stroke-slate-900" />
-            <span className="font-bold tracking-tight text-white font-sans">
-              ACADEMIC <span className="text-primary-container">MARKETPLACE</span>
-            </span>
-          </div>
-          <p className="max-w-md mx-auto text-slate-500 leading-relaxed">
-            Una plataforma diseñada para el fomento de la economía estudiantil circular. UNSCH © 2026. Todos los derechos reservados.
-          </p>
-          <div className="flex items-center justify-center gap-1 text-[10px] text-slate-600 font-mono">
-            <ShieldCheck className="w-4 h-4 text-green-600/80" />
-            <span>Transacciones y regateos asistidos por la Inteligencia Artificial del modelo Gemini</span>
-          </div>
-        </div>
-      </footer>
-
     </div>
   );
 }
