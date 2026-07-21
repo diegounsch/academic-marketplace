@@ -46,19 +46,6 @@ export const SELLERS: Record<string, Seller> = {
 };
 
 export const INITIAL_PRODUCTS: Product[] = [
-
-
-  {
-    id: "p9",
-    title: "caramelo (Edición Universitaria)",
-    description: "caramelo para laboratorio",
-    price: 1.10,
-    category: Category.LAB_EQUIPMENT,
-    condition: Condition.LIKE_NEW,
-    image: "/src/assets/images/stitch_plush_1783649171605.jpg",
-    seller: SELLERS.lucas,
-    createdAt: "2026-07-21",
-  },
   {
     id: "stitch_plush",
     title: "Peluche de Stitch Coleccionista (Edición Universitaria)",
@@ -187,7 +174,18 @@ export const INITIAL_PRODUCTS: Product[] = [
     image: "https://images.unsplash.com/photo-1517059224940-d4af9eec41b7?w=500&auto=format&fit=crop&q=80",
     seller: SELLERS.lucas,
     createdAt: "2026-07-06",
-  }
+  },
+  {
+    id: "p9",
+    title: "caramelo (Edición Universitaria)",
+    description: "caramelo para laboratorio",
+    price: 1.10,
+    category: Category.LAB_EQUIPMENT,
+    condition: Condition.LIKE_NEW,
+    image: "/src/assets/images/stitch_plush_1783649171605.jpg",
+    seller: SELLERS.lucas,
+    createdAt: "2026-07-20",
+  },
 ];
 
 export const MOCK_USER: { 
