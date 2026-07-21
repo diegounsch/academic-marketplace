@@ -56,7 +56,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     category: Category.LAB_EQUIPMENT,
     condition: Condition.LIKE_NEW,
     image: "/src/assets/images/stitch_plush_1783649171605.jpg",
-    seller: SELLERS.Diego,
+    seller: SELLERS.lucas,
     createdAt: "2026-07-21",
   },
   {
