@@ -187,13 +187,13 @@ export const MOCK_USER: {
   dni: string;
   isDniVerified: boolean;
 } = {
-  firstName: "Diego",
-  lastName: "Llamocca",
-  name: "Diego Llamocca",
-  email: "diego.llamocca.27@unsch.edu.pe",
+  firstName: "Estudiante",
+  lastName: "Prueba",
+  name: "Estudiante Prueba",
+  email: "estudiante.prueba@unsch.edu.pe", // Correo inventado
   university: "Universidad Nacional de San Cristóbal de Huamanga",
   avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
-  balance: 150.0,
-  dni: "70245678",
+  balance: 0.0, 
+  dni: "00000000", // DNI inventado
   isDniVerified: false,
 };
