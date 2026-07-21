@@ -372,74 +372,87 @@ export default function App() {
     saveCart(updated);
   };
 
-  // --- New Manual Listing Posting ---
  const handlePublishProduct = async (p: {
-    title: string;
-    category: Category;
-    condition: Condition;
-    price: number;
-    description: string;
-    courseCode: string;
-    image: string;
-  }) => {
-    if (!user || !user.isDniVerified) {
-      alert("No puedes publicar artículos sin antes verificar tu DNI en tu Perfil.");
-      return;
-    }
+  title: string;
+  category: Category;
+  condition: Condition;
+  price: number;
+  description: string;
+  courseCode: string;
+  image: string;
+}) => {
+  // 1. Verificación estricta de DNI
+  if (!user || !user.isDniVerified) {
+    alert("No puedes publicar artículos sin antes verificar tu DNI en tu Perfil.");
+    return;
+  }
 
-    try {
-      // 1. Guardamos el producto en la tabla 'products' de Supabase
-      const { data, error } = await supabase
-        .from('products')
-        .insert([
-          {
-            title: p.title,
-            description: p.description,
-            price: p.price,
-            category: p.category,
-            condition: p.condition,
-            course_code: p.courseCode || null,
-            image_url: p.image,
-            seller_id: user.id || 'current_user', // Enlazamos al estudiante actual
-            status: 'available'
-          }
-        ])
-        .select();
+  // Asegurar un ID válido del vendedor
+  const sellerId = user.id || "current_user";
 
-      if (error) throw error;
+  // 2. Primero aseguramos que el perfil del vendedor exista en Supabase para evitar error FK
+  try {
+    await supabase.from('profiles').upsert({
+      id: sellerId,
+      full_name: user.name,
+      avatar_url: user.avatar,
+      is_dni_verified: user.isDniVerified,
+      wallet_balance: user.balance,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'id' });
+  } catch (profileErr) {
+    console.warn("No se pudo verificar el perfil previo en Supabase:", profileErr);
+  }
 
-      alert("¡Artículo publicado con éxito en Supabase!");
-
-      // 2. Recargamos la página o actualizamos el estado local para mostrar el nuevo item
-      if (data && data[0]) {
-        const addedProduct: Product = {
-          id: data[0].id,
-          title: data[0].title,
-          description: data[0].description,
-          price: data[0].price,
-          category: data[0].category,
-          condition: data[0].condition,
-          courseCode: data[0].course_code,
-          image: data[0].image_url,
-          seller: {
-            id: user.id,
-            name: user.name,
-            avatar: user.avatar,
-            role: "Tú (Estudiante)",
-            rating: 5.0,
-            persona: "Eres tú",
-          },
-          createdAt: data[0].created_at,
-          isCustom: true,
-        };
-        setProducts([addedProduct, ...products]);
-        setActiveTab("marketplace"); // Redirigir al inicio
+  // 3. Intentar insertar en Supabase
+  const { data, error } = await supabase
+    .from('products')
+    .insert([
+      {
+        title: p.title,
+        description: p.description,
+        price: p.price,
+        category: p.category,
+        condition: p.condition,
+        course_code: p.courseCode || null,
+        image_url: p.image,
+        seller_id: sellerId,
+        status: 'available'
       }
-    } catch (err) {
-      console.error("Error al publicar en Supabase:", err.message);
-      alert("Hubo un problema al guardar tu producto en la nube.");
-    }
-  };
+    ])
+    .select();
+
+  if (error) {
+    console.error("Error al publicar en Supabase:", error.message);
+    throw new Error(error.message); // Arrojamos el error para que SellForm detenga la animación de éxito
+  }
+
+  // 4. Si Supabase responde con éxito, actualizamos el estado local
+  if (data && data[0]) {
+    const addedProduct: Product = {
+      id: data[0].id,
+      title: data[0].title,
+      description: data[0].description,
+      price: data[0].price,
+      category: data[0].category,
+      condition: data[0].condition,
+      courseCode: data[0].course_code,
+      image: data[0].image_url,
+      seller: {
+        id: user.id,
+        name: user.name,
+        avatar: user.avatar,
+        role: "Tú (Estudiante)",
+        rating: 5.0,
+        persona: "Eres tú",
+      },
+      createdAt: data[0].created_at,
+      isCustom: true,
+    };
+
+    setProducts([addedProduct, ...products]);
+  }
+};
 
   // --- AI-assisted listing posting callback ---
   const handlePublishFromAI = (p: {
