@@ -102,137 +102,115 @@ export default function App() {
     meetingLocation: string;
   } | null>(null);
 
-  // --- Initial loading on component mount ---
-  useEffect(() => {
-    
-   // Sync products con Supabase
-    const fetchProducts = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('products')
-          .select('*, profiles(full_name, avatar_url)') // Traemos producto y datos del vendedor
-          .eq('status', 'available');
 
-        if (error) throw error;
 
-        if (data && data.length > 0) {
-          // Adaptamos los datos de Supabase al formato visual de tu app
-          const formattedProducts = data.map(item => ({
-            id: item.id,
-            title: item.title,
-            description: item.description,
-            price: item.price,
-            image: item.image_url || 'https://images.unsplash.com/photo-1543002588-bfa74002ed7e?w=500&q=80',
-            category: 'Libros de Texto', // Valor por defecto temporal
-            condition: 'Usado',
 
-            seller: {
-              id: item.seller_id,
-              name: item.profiles?.full_name || 'Estudiante UNSCH',
-              avatar: item.profiles?.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix',
-              role: 'Vendedor',
-              rating: 5.0,
-              persona: 'Amigable'
-            },
-            createdAt: item.created_at,
-            isCustom: true
-          }));
-          setProducts(formattedProducts);
-        } else {
-          // Si tu base de datos de Supabase está vacía, mostraremos los datos de prueba para que no se vea vacío
-          setProducts(INITIAL_PRODUCTS);
-        }
-      } catch (err) {
-        console.error("Error conectando a Supabase:", err.message);
-        setProducts(INITIAL_PRODUCTS); // Si hay error, caemos en los datos falsos
+  
+useEffect(() => {
+  // Sync products con Supabase
+  const fetchProducts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*, profiles(full_name, avatar_url)') // Traemos producto y datos del vendedor
+        .eq('status', 'available');
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        // Adaptamos los datos de Supabase al formato visual de tu app
+        const formattedProducts = data.map(item => ({
+          id: item.id,
+          title: item.title,
+          description: item.description,
+          price: item.price,
+          image: item.image_url || 'https://images.unsplash.com/photo-1543002588-bfa74002ed7e?w=500&q=80',
+          category: item.category || 'Libros de Texto',   // 👈 CORREGIDO: Toma la categoría real de Supabase
+          condition: item.condition || 'Usado',           // 👈 CORREGIDO: Toma la condición real
+          courseCode: item.course_code || '',            // 👈 AGREGADO: Para que no pierda el código del curso
+
+          seller: {
+            id: item.seller_id,
+            name: item.profiles?.full_name || 'Estudiante UNSCH',
+            avatar: item.profiles?.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix',
+            role: 'Vendedor',
+            rating: 5.0,
+            persona: 'Amigable'
+          },
+          createdAt: item.created_at,
+          isCustom: true
+        }));
+        setProducts(formattedProducts);
+      } else {
+        // Si tu base de datos de Supabase está vacía, mostraremos los datos de prueba
+        setProducts(INITIAL_PRODUCTS);
       }
-    };
-
-    fetchProducts();
-
-    // Sync user profile (includes wallet balance)
-    const savedUser = localStorage.getItem("academic_user");
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-    } else {
-      localStorage.setItem("academic_user", JSON.stringify(MOCK_USER));
+    } catch (err: any) {
+      console.error("Error conectando a Supabase:", err.message);
+      setProducts(INITIAL_PRODUCTS); // Si hay error, caemos en los datos falsos
     }
+  };
+
+  fetchProducts();
+
+  // Sync user profile (includes wallet balance)
+  const savedUser = localStorage.getItem("academic_user");
+  if (savedUser) {
+    setUser(JSON.parse(savedUser));
+  } else {
+    localStorage.setItem("academic_user", JSON.stringify(MOCK_USER));
+  }
+
+  // Sync watchlist
+  const savedWatch = localStorage.getItem("academic_watchlist");
+  if (savedWatch) {
+    setWatchlist(JSON.parse(savedWatch));
+  }
+
+  // Sync cart
+  const savedCart = localStorage.getItem("academic_cart");
+  if (savedCart) {
+    setCart(JSON.parse(savedCart));
+  }
+
+  // Sync chat sessions
+  const savedChats = localStorage.getItem("academic_chats");
+  if (savedChats) {
+    setChatSessions(JSON.parse(savedChats));
+  }
+
+  // Sync reports
+  const savedReports = localStorage.getItem("academic_reports");
+  if (savedReports) {
+    setReports(JSON.parse(savedReports));
+  } else {
+    const seedReport = [
+      {
+        id: "rep_1",
+        productId: "p1",
+        productTitle: "Cálculo: Trascendentes Tempranas (James Stewart)",
+        reason: "Precio irreal o abusivo",
+        reporterName: "Camila Torres",
+        date: "09/07/2026"
+      },
+      {
+        id: "rep_2",
+        productId: "stitch_plush",
+        productTitle: "Peluche de Stitch Coleccionista (Edición Universitaria)",
+        reason: "No es un artículo académico",
+        reporterName: "Dr. Héctor Valenzuela",
+        date: "09/07/2026"
+      }
+    ];
+    setReports(seedReport);
+    localStorage.setItem("academic_reports", JSON.stringify(seedReport));
+  }
+}, []);
 
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    // Sync watchlist
-    const savedWatch = localStorage.getItem("academic_watchlist");
-    if (savedWatch) {
-      setWatchlist(JSON.parse(savedWatch));
-    }
-
-    // Sync cart
-    const savedCart = localStorage.getItem("academic_cart");
-    if (savedCart) {
-      setCart(JSON.parse(savedCart));
-    }
-
-    // Sync chat sessions
-    const savedChats = localStorage.getItem("academic_chats");
-    if (savedChats) {
-      setChatSessions(JSON.parse(savedChats));
-    }
-
-    // Sync reports
-    const savedReports = localStorage.getItem("academic_reports");
-    if (savedReports) {
-      setReports(JSON.parse(savedReports));
-    } else {
-      const seedReport = [
-        {
-          id: "rep_1",
-          productId: "p1",
-          productTitle: "Cálculo: Trascendentes Tempranas (James Stewart)",
-          reason: "Precio irreal o abusivo",
-          reporterName: "Camila Torres",
-          date: "09/07/2026"
-        },
-        {
-          id: "rep_2",
-          productId: "stitch_plush",
-          productTitle: "Peluche de Stitch Coleccionista (Edición Universitaria)",
-          reason: "No es un artículo académico",
-          reporterName: "Dr. Héctor Valenzuela",
-          date: "09/07/2026"
-        }
-      ];
-      setReports(seedReport);
-      localStorage.setItem("academic_reports", JSON.stringify(seedReport));
-    }
-  }, []);
-
+  
   // Helpers to update persistent storage
   const saveProducts = (updated: Product[]) => {
     setProducts(updated);
